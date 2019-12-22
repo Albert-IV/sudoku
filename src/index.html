@@ -10,7 +10,7 @@
   height: 40px;
 }
 
-.cell:hover {
+.cell:hover:not(.static) {
   background-color: lightblue;
 }
 
@@ -30,12 +30,13 @@
   display: flex;
   justify-content: center;
 }
+
+.static {
+  background-color: rgb(234, 234, 234);
+}
 </style>
   </head>
   <body>
-    <div class="container">
-      <div id="app"></div>
-      <script src="./index.js"></script>
-    </div>
+    <script src="./index.js"></script>
   </body>
 </html>

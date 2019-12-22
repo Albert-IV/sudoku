@@ -1,12 +1,13 @@
 module Main exposing (Model(..), Msg(..), init, main, subscriptions, update, view)
 
-import Array exposing (..)
-import Browser
+import Array exposing (Array)
+import Browser exposing (Document)
 import Html exposing (..)
 import Html.Attributes exposing (..)
 import Html.Events exposing (..)
 import Http
 import Json.Decode exposing (Decoder, field, string)
+import Tuple exposing (..)
 
 
 
@@ -14,7 +15,7 @@ import Json.Decode exposing (Decoder, field, string)
 
 
 main =
-    Browser.element
+    Browser.document
         { init = init
         , update = update
         , subscriptions = subscriptions
@@ -36,9 +37,9 @@ type Model
 
 
 type SudokuCell
-    = StaticValue Int
-    | InputValue Int
-    | Nothing
+    = StaticCell Int
+    | InputCell Int
+    | EmptyCell
 
 
 getInitialGame : Array (Array SudokuCell)
@@ -67,10 +68,10 @@ convertSudokuRow row =
         convertCell val =
             case val of
                 0 ->
-                    Nothing
+                    EmptyCell
 
                 _ ->
-                    StaticValue val
+                    StaticCell val
     in
     Array.fromList (List.map convertCell row)
 
@@ -86,21 +87,17 @@ init _ =
 
 type Msg
     = None
+    | MakeInput Int Int
 
 
 update : Msg -> Model -> ( Model, Cmd Msg )
 update msg model =
-    -- TODO: handle events
-    -- case msg of
-    --     MorePlease ->
-    --         ( Loading, getRandomCatGif )
-    --     GotGif result ->
-    --         case result of
-    --             Ok url ->
-    --                 ( Success url, Cmd.none )
-    --             Err _ ->
-    --                 ( Failure, Cmd.none )
-    ( model, Cmd.none )
+    case msg of
+        MakeInput y x ->
+            ( convertToStaticCell y x model, Cmd.none )
+
+        _ ->
+            ( model, Cmd.none )
 
 
 convertGameToList : Array (Array SudokuCell) -> List (List SudokuCell)
@@ -108,12 +105,29 @@ convertGameToList game =
     Array.toList (Array.map Array.toList game)
 
 
+convertToStaticCell : Int -> Int -> Model -> Model
+convertToStaticCell y x (DisplayGame game) =
+    let
+        selectedRow =
+            Maybe.withDefault
+                (Array.initialize 9 (\n -> StaticCell n))
+                (Array.get y game)
+
+        updatedRow =
+            Array.set x (StaticCell 10) selectedRow
+
+        updatedGame =
+            Array.set y updatedRow game
+    in
+    DisplayGame updatedGame
+
+
 
 -- SUBSCRIPTIONS
 
 
 subscriptions : Model -> Sub Msg
-subscriptions model =
+subscriptions _ =
     Sub.none
 
 
@@ -121,12 +135,22 @@ subscriptions model =
 -- VIEW
 
 
-view : Model -> Html Msg
+view : Model -> Document Msg
 view model =
-    div []
-        [ h1 [] [ text "SUDOKU!!!!" ]
-        , displayTable model
+    { title = "SUDOKU!!!"
+    , body = pageContents model
+    }
+
+
+pageContents : Model -> List (Html Msg)
+pageContents model =
+    [ div [ class "container" ]
+        [ div []
+            [ h1 [] [ text "SUDOKU!!!!" ]
+            , displayTable model
+            ]
         ]
+    ]
 
 
 displayTable : Model -> Html Msg
@@ -141,27 +165,27 @@ displayTable (DisplayGame game) =
 displayRows : List (List SudokuCell) -> List (Html Msg)
 displayRows rows =
     let
-        displayRow row =
-            div [ class "flex" ] (displayColumns row)
+        displayRow rowIdx row =
+            div [ class "flex" ] (displayColumns row rowIdx)
     in
-    List.map displayRow rows
+    List.indexedMap displayRow rows
 
 
-displayColumns : List SudokuCell -> List (Html Msg)
-displayColumns columns =
+displayColumns : List SudokuCell -> Int -> List (Html Msg)
+displayColumns columns rowIdx =
     let
-        displayColumn column =
+        displayColumn columnIdx column =
             case column of
-                StaticValue value ->
-                    div [ class "cell flex" ] [ text (String.fromInt value) ]
+                StaticCell value ->
+                    div [ class "cell flex static", onClick (MakeInput rowIdx columnIdx) ] [ text (String.fromInt value) ]
 
-                InputValue value ->
-                    div [ class "cell flex" ] [ text (String.fromInt value) ]
+                InputCell value ->
+                    div [ class "cell flex", onClick (MakeInput rowIdx columnIdx) ] [ text (String.fromInt value) ]
 
-                Nothing ->
-                    div [ class "cell flex" ] [ text "" ]
+                EmptyCell ->
+                    div [ class "cell flex", onClick (MakeInput rowIdx columnIdx) ] [ text "" ]
 
         cellContents =
-            List.map displayColumn columns
+            List.indexedMap displayColumn columns
     in
     [ div [ class "flex" ] cellContents ]
