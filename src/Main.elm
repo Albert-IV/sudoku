@@ -31,14 +31,17 @@ type Model
     = DisplayGame (Array (Array SudokuCell))
 
 
+type alias SudokuCell =
+    { y : Int
+    , x : Int
+    , value : Int
+    , cellType : CellType
+    }
 
--- type SudokuCell
---     = Array (Array SudokuCell)
 
-
-type SudokuCell
-    = StaticCell Int
-    | InputCell Int
+type CellType
+    = StaticCell
+    | InputCell
     | EmptyCell
 
 
@@ -59,21 +62,21 @@ getInitialGame =
 
 createSudokuFromLists : List (List Int) -> Array (Array SudokuCell)
 createSudokuFromLists state =
-    Array.fromList (List.map convertSudokuRow state)
+    Array.fromList (List.indexedMap convertSudokuRow state)
 
 
-convertSudokuRow : List Int -> Array SudokuCell
-convertSudokuRow row =
+convertSudokuRow : Int -> List Int -> Array SudokuCell
+convertSudokuRow y row =
     let
-        convertCell val =
+        convertCell x val =
             case val of
                 0 ->
-                    EmptyCell
+                    { x = x, y = y, value = 0, cellType = EmptyCell }
 
                 _ ->
-                    StaticCell val
+                    { x = x, y = y, value = val, cellType = StaticCell }
     in
-    Array.fromList (List.map convertCell row)
+    Array.fromList (List.indexedMap convertCell row)
 
 
 init : () -> ( Model, Cmd Msg )
@@ -110,11 +113,11 @@ convertToStaticCell y x (DisplayGame game) =
     let
         selectedRow =
             Maybe.withDefault
-                (Array.initialize 9 (\n -> StaticCell n))
+                (Array.initialize 9 (\n -> { x = n, y = y, value = n, cellType = StaticCell }))
                 (Array.get y game)
 
         updatedRow =
-            Array.set x (StaticCell 10) selectedRow
+            Array.set x { cellType = StaticCell, value = 10, x = x, y = y } selectedRow
 
         updatedGame =
             Array.set y updatedRow game
@@ -174,16 +177,16 @@ displayRows rows =
 displayColumns : List SudokuCell -> Int -> List (Html Msg)
 displayColumns columns rowIdx =
     let
-        displayColumn columnIdx column =
-            case column of
-                StaticCell value ->
-                    div [ class "cell flex static", onClick (MakeInput rowIdx columnIdx) ] [ text (String.fromInt value) ]
+        displayColumn x column =
+            case column.cellType of
+                StaticCell ->
+                    div [ class "cell flex static" ] [ text (String.fromInt column.value) ]
 
-                InputCell value ->
-                    div [ class "cell flex", onClick (MakeInput rowIdx columnIdx) ] [ text (String.fromInt value) ]
+                InputCell ->
+                    div [ class "cell flex", onClick (MakeInput rowIdx x) ] [ text (String.fromInt column.value) ]
 
                 EmptyCell ->
-                    div [ class "cell flex", onClick (MakeInput rowIdx columnIdx) ] [ text "" ]
+                    div [ class "cell flex", onClick (MakeInput rowIdx x) ] [ text "" ]
 
         cellContents =
             List.indexedMap displayColumn columns
