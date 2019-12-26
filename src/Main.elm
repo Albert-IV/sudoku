@@ -97,7 +97,7 @@ convertSudokuRow y row =
 
 init : () -> ( Model, Cmd Msg )
 init _ =
-    ( { game = getInitialGame, difficulty = Easy, gameStatus = Loaded }, Cmd.none )
+    ( { game = getInitialGame, difficulty = Easy, gameStatus = Loading }, loadGame Easy )
 
 
 
@@ -157,11 +157,8 @@ convertGameToList game =
 
 
 convertToStaticCell : Int -> Int -> Model -> Model
-convertToStaticCell y x model =
+convertToStaticCell y x { game, difficulty } =
     let
-        { game } =
-            model
-
         selectedRow =
             Maybe.withDefault
                 (Array.initialize 9 (\n -> { x = n, y = y, value = n, cellType = StaticCell }))
@@ -173,7 +170,7 @@ convertToStaticCell y x model =
         updatedGame =
             Array.set y updatedRow game
     in
-    { game = updatedGame, difficulty = model.difficulty, gameStatus = Loaded }
+    { game = updatedGame, difficulty = difficulty, gameStatus = Loaded }
 
 
 
@@ -261,14 +258,30 @@ pageContents model =
                 , difficultySelect model
                 , changeDifficultyBtn
                 ]
-            , displayTable model
+            , getBoardElems model
             ]
         ]
     ]
 
 
-displayTable : Model -> Html Msg
-displayTable model =
+getBoardElems : Model -> Html Msg
+getBoardElems model =
+    case model.gameStatus of
+        Loading ->
+            h1 [] [ text "Loading..." ]
+
+        Loaded ->
+            displayGameBoard model
+
+        Error ->
+            div []
+                [ h6 [] [ text "Error loading game... defaulting to hard coded game.  Sorry!" ]
+                , displayGameBoard model
+                ]
+
+
+displayGameBoard : Model -> Html Msg
+displayGameBoard model =
     let
         { game } =
             model
