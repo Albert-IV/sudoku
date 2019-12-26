@@ -1,4 +1,4 @@
-module Main exposing (Model(..), Msg(..), init, main, subscriptions, update, view)
+module Main exposing (Model, Msg(..), init, main, subscriptions, update, view)
 
 import Array exposing (Array)
 import Browser exposing (Document)
@@ -6,7 +6,7 @@ import Html exposing (..)
 import Html.Attributes exposing (..)
 import Html.Events exposing (..)
 import Http
-import Json.Decode exposing (Decoder, field, string)
+import Json.Decode exposing (Decoder, field, int, list)
 import Tuple exposing (..)
 
 
@@ -27,8 +27,24 @@ main =
 -- MODEL
 
 
-type Model
-    = DisplayGame (Array (Array SudokuCell))
+type alias Model =
+    { game : Array (Array SudokuCell)
+    , difficulty : Difficulty
+    , gameStatus : GameStatus
+    }
+
+
+type GameStatus
+    = Loading
+    | Loaded
+    | Error
+
+
+type Difficulty
+    = Easy
+    | Medium
+    | Hard
+    | Random
 
 
 type alias SudokuCell =
@@ -81,7 +97,7 @@ convertSudokuRow y row =
 
 init : () -> ( Model, Cmd Msg )
 init _ =
-    ( DisplayGame getInitialGame, Cmd.none )
+    ( { game = getInitialGame, difficulty = Easy, gameStatus = Loaded }, Cmd.none )
 
 
 
@@ -89,8 +105,10 @@ init _ =
 
 
 type Msg
-    = None
-    | MakeInput Int Int
+    = MakeInput Int Int
+    | LoadGame
+    | LoadedBoard (Result Http.Error (List (List Int)))
+    | DifficultyChanged Difficulty
 
 
 update : Msg -> Model -> ( Model, Cmd Msg )
@@ -99,8 +117,38 @@ update msg model =
         MakeInput y x ->
             ( convertToStaticCell y x model, Cmd.none )
 
-        _ ->
-            ( model, Cmd.none )
+        DifficultyChanged difficulty ->
+            ( { model | difficulty = difficulty }, Cmd.none )
+
+        LoadGame ->
+            ( { model | gameStatus = Loading }, loadGame model.difficulty )
+
+        LoadedBoard result ->
+            case result of
+                Ok newGame ->
+                    let
+                        game =
+                            createSudokuFromLists newGame
+                    in
+                    ( { model | gameStatus = Loaded, game = game }, Cmd.none )
+
+                Err _ ->
+                    ( { model | gameStatus = Error }, Cmd.none )
+
+
+loadGame : Difficulty -> Cmd Msg
+loadGame difficulty =
+    -- Currently using API from: https://github.com/berto/sugoku
+    -- Eventually we'll auto-create our own Sudoku puzzles, but for now...
+    Http.get
+        { url = "https://sugoku.herokuapp.com/board?difficulty=" ++ String.toLower (difficultyToString difficulty)
+        , expect = Http.expectJson LoadedBoard boardDecoder
+        }
+
+
+boardDecoder : Decoder (List (List Int))
+boardDecoder =
+    field "board" (list (list int))
 
 
 convertGameToList : Array (Array SudokuCell) -> List (List SudokuCell)
@@ -109,8 +157,11 @@ convertGameToList game =
 
 
 convertToStaticCell : Int -> Int -> Model -> Model
-convertToStaticCell y x (DisplayGame game) =
+convertToStaticCell y x model =
     let
+        { game } =
+            model
+
         selectedRow =
             Maybe.withDefault
                 (Array.initialize 9 (\n -> { x = n, y = y, value = n, cellType = StaticCell }))
@@ -122,7 +173,7 @@ convertToStaticCell y x (DisplayGame game) =
         updatedGame =
             Array.set y updatedRow game
     in
-    DisplayGame updatedGame
+    { game = updatedGame, difficulty = model.difficulty, gameStatus = Loaded }
 
 
 
@@ -145,11 +196,71 @@ view model =
     }
 
 
+difficultyFromString : String -> Difficulty
+difficultyFromString difficulty =
+    case difficulty of
+        "Easy" ->
+            Easy
+
+        "Medium" ->
+            Medium
+
+        "Hard" ->
+            Hard
+
+        "Random" ->
+            Random
+
+        _ ->
+            Easy
+
+
+difficultyToString : Difficulty -> String
+difficultyToString difficulty =
+    case difficulty of
+        Easy ->
+            "Easy"
+
+        Medium ->
+            "Medium"
+
+        Hard ->
+            "Hard"
+
+        Random ->
+            "Random"
+
+
+emitSelectedDifficulty : String -> Msg
+emitSelectedDifficulty difficulty =
+    DifficultyChanged (difficultyFromString difficulty)
+
+
+difficultySelect : Model -> Html Msg
+difficultySelect model =
+    select [ onInput emitSelectedDifficulty ]
+        [ option [ value "Easy", selected (model.difficulty == Easy) ] [ text "Easy" ]
+        , option [ value "Medium", selected (model.difficulty == Medium) ] [ text "Medium" ]
+        , option [ value "Hard", selected (model.difficulty == Hard) ] [ text "Hard" ]
+        , option [ value "Random", selected (model.difficulty == Random) ] [ text "Random" ]
+        ]
+
+
+changeDifficultyBtn : Html Msg
+changeDifficultyBtn =
+    button [ type_ "button", onClick LoadGame ] [ text "New Game" ]
+
+
 pageContents : Model -> List (Html Msg)
 pageContents model =
     [ div [ class "container" ]
         [ div []
             [ h1 [] [ text "SUDOKU!!!!" ]
+            , h3 []
+                [ text "Difficulty: "
+                , difficultySelect model
+                , changeDifficultyBtn
+                ]
             , displayTable model
             ]
         ]
@@ -157,8 +268,11 @@ pageContents model =
 
 
 displayTable : Model -> Html Msg
-displayTable (DisplayGame game) =
+displayTable model =
     let
+        { game } =
+            model
+
         convertedGame =
             convertGameToList game
     in
