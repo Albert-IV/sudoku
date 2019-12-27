@@ -3,7 +3,7 @@ module Main exposing (Model, Msg(..), init, main, subscriptions, update, view)
 import Array exposing (Array)
 import Browser exposing (Document)
 import Html exposing (..)
-import Html.Attributes exposing (..)
+import Html.Attributes exposing (class, classList, disabled, maxlength, readonly, selected, size, type_, value)
 import Html.Events exposing (..)
 import Http
 import Json.Decode exposing (Decoder, field, int, list)
