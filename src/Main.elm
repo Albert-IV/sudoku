@@ -7,6 +7,7 @@ import Html.Attributes exposing (class, classList, disabled, maxlength, readonly
 import Html.Events exposing (..)
 import Http
 import Json.Decode exposing (Decoder, field, int, list)
+import Set exposing (Set)
 
 
 
@@ -57,6 +58,7 @@ type alias SudokuCell =
 type CellType
     = StaticCell
     | RegularCell
+    | InvalidCell
 
 
 createSudokuFromLists : List (List String) -> Array (Array SudokuCell)
@@ -81,7 +83,7 @@ convertCell y x val =
 
 init : () -> ( Model, Cmd Msg )
 init _ =
-    ( { game = Array.fromList [ Array.fromList [] ], difficulty = Easy, gameStatus = Loading }, loadGame Easy )
+    ( { game = Array.fromList [ Array.empty ], difficulty = Easy, gameStatus = Loading }, loadGame Easy )
 
 
 
@@ -92,15 +94,8 @@ type Msg
     = LoadGame
     | LoadedBoard (Result Http.Error (List (List Int)))
     | DifficultyChanged Difficulty
-    | SetCellValue CellChangeEvent
+    | SetCellValue SudokuCell
     | NoOp
-
-
-type alias CellChangeEvent =
-    { x : Int
-    , y : Int
-    , value : String
-    }
 
 
 update : Msg -> Model -> ( Model, Cmd Msg )
@@ -116,7 +111,14 @@ update msg model =
             ( { model | gameStatus = Loading }, loadGame model.difficulty )
 
         SetCellValue changeEvent ->
-            ( { model | game = setFromCoordinates changeEvent model.game }, Cmd.none )
+            let
+                updatedGame =
+                    setFromCoordinates changeEvent model.game
+
+                updatedAndValidatedGame =
+                    validateSudokuCell changeEvent updatedGame
+            in
+            ( { model | game = updatedAndValidatedGame }, Cmd.none )
 
         LoadedBoard result ->
             case result of
@@ -159,7 +161,6 @@ loadGame difficulty =
     -- Currently using API from: https://github.com/berto/sugoku
     -- Eventually we'll auto-create our own Sudoku puzzles, but for now...
     Http.get
-        -- { url = "" ++ String.toLower (difficultyToString difficulty)
         { url = "https://sugoku.herokuapp.com/board?difficulty=" ++ String.toLower (difficultyToString difficulty)
         , expect = Http.expectJson LoadedBoard boardDecoder
         }
@@ -170,8 +171,8 @@ boardDecoder =
     field "board" (list (list int))
 
 
-setFromCoordinates : CellChangeEvent -> Array (Array SudokuCell) -> Array (Array SudokuCell)
-setFromCoordinates { y, x, value } listOfLists =
+setFromCoordinates : SudokuCell -> Array (Array SudokuCell) -> Array (Array SudokuCell)
+setFromCoordinates ({ y, x, value, cellType } as change) listOfLists =
     let
         cellValue =
             { y = y, x = x, value = value, cellType = RegularCell }
@@ -182,39 +183,152 @@ setFromCoordinates { y, x, value } listOfLists =
         innerArr =
             case Array.get y listOfLists of
                 Nothing ->
-                    Array.fromList []
+                    Array.empty
 
                 Just val ->
                     val
     in
-    Array.set y (setInnerVal innerArr) listOfLists
+    validateSudokuCell change (Array.set y (setInnerVal innerArr) listOfLists)
 
 
+getFromCoordinates : Int -> Int -> Array (Array SudokuCell) -> SudokuCell
+getFromCoordinates y x game =
+    let
+        defaultCellValue =
+            { y = y
+            , x = x
+            , value = ""
+            , cellType = RegularCell
+            }
 
--- Eventually may be useful?
--- getFromCoordinates : Int -> Int -> Array (Array SudokuCell) -> SudokuCell
--- getFromCoordinates y x game =
---     let
---         defaultCellValue =
---             { y = y
---             , x = x
---             , value = ""
---             , cellType = RegularCell
---             }
---         outerVal =
---             case Array.get y game of
---                 Nothing ->
---                     Array.fromList [ defaultCellValue ]
---                 Just row ->
---                     row
---         innerVal =
---             case Array.get x outerVal of
---                 Nothing ->
---                     defaultCellValue
---                 Just cell ->
---                     cell
---     in
---     innerVal
+        outerVal =
+            case Array.get y game of
+                Nothing ->
+                    Array.fromList [ defaultCellValue ]
+
+                Just row ->
+                    row
+
+        innerVal =
+            case Array.get x outerVal of
+                Nothing ->
+                    defaultCellValue
+
+                Just cell ->
+                    cell
+    in
+    innerVal
+
+
+validateSudokuCell : SudokuCell -> Array (Array SudokuCell) -> Array (Array SudokuCell)
+validateSudokuCell ({ y, x, value } as cell) game =
+    let
+        xList =
+            getXList x game
+
+        yList =
+            getYList y game
+
+        regionList =
+            getRegionList y x game
+
+        uniqueValues =
+            createSetFromCells xList yList regionList
+    in
+    if not (Set.member value uniqueValues) then
+        game
+
+    else
+        setFromCoordinates { cell | cellType = InvalidCell } game
+
+
+getXList : Int -> Array (Array SudokuCell) -> List String
+getXList x game =
+    let
+        getValue rows =
+            case Array.get x rows of
+                Nothing ->
+                    "0"
+
+                Just cell ->
+                    cell.value
+
+        getRowsWithDefault y =
+            case Array.get y game of
+                Nothing ->
+                    Array.empty
+
+                Just row ->
+                    row
+    in
+    Array.initialize 9 identity
+        |> Array.map getRowsWithDefault
+        |> Array.map getValue
+        |> Array.toList
+
+
+getYList : Int -> Array (Array SudokuCell) -> List String
+getYList y game =
+    let
+        getValue cell =
+            cell.value
+    in
+    Array.get y game
+        |> Maybe.withDefault Array.empty
+        |> Array.map getValue
+        |> Array.toList
+
+
+getRegionList : Int -> Int -> Array (Array SudokuCell) -> List String
+getRegionList y x game =
+    let
+        xRegion =
+            x // 3
+
+        yRegion =
+            y // 3
+    in
+    getRegionCells yRegion xRegion game
+
+
+getRegionCells : Int -> Int -> Array (Array SudokuCell) -> List String
+getRegionCells y x game =
+    let
+        filterCell : SudokuCell -> Bool
+        filterCell cell =
+            cell.y // 3 == y && cell.x // 3 == x
+
+        filterColumn : Array SudokuCell -> Bool
+        filterColumn column =
+            Array.length (Array.filter filterCell column) /= 0
+
+        filteredGame : Array (Array SudokuCell)
+        filteredGame =
+            Array.filter filterColumn game
+
+        extractCells : Array SudokuCell -> Array String -> Array String
+        extractCells row arr =
+            Array.append arr (Array.map (\cell -> cell.value) row)
+    in
+    Array.toList (Array.foldl extractCells Array.empty filteredGame)
+
+
+createSetFromCells : List String -> List String -> List String -> Set String
+createSetFromCells list1 list2 list3 =
+    let
+        set1 =
+            Set.fromList list1
+
+        set2 =
+            Set.fromList list2
+
+        set3 =
+            Set.fromList list3
+
+        allValues =
+            Set.union (Set.union set1 set2) set3
+    in
+    Set.filter (\x -> x /= "0") allValues
 
 
 convertGameToList : Array (Array t) -> List (List t)
@@ -371,7 +485,7 @@ displayCell cell =
                      else
                         cell.value
                     )
-                , onInput (\val -> SetCellValue { y = cell.y, x = cell.x, value = val })
+                , onInput (\val -> SetCellValue { cell | value = val })
                 ]
                 []
             ]
@@ -381,6 +495,7 @@ displayCell cell =
             [ ( "cell", True )
             , ( "flex", True )
             , ( "static", cell.cellType == StaticCell )
+            , ( "invalid", cell.cellType == InvalidCell )
             , ( "cell-left", isLeft )
             , ( "cell-right", isRight )
             , ( "cell-top", isTop )
