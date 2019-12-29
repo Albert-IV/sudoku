@@ -169,7 +169,7 @@ boardDecoder =
 
 
 setFromCoordinates : SudokuCell -> Array (Array SudokuCell) -> Array (Array SudokuCell)
-setFromCoordinates ({ y, x, value } as change) game =
+setFromCoordinates { y, x, value } game =
     let
         cellValue =
             { y = y, x = x, value = value, cellType = getCellType y x value game }
@@ -195,36 +195,40 @@ getCellType y x value game =
             ( y // 3, x // 3 )
 
         validValues =
-            Array.foldl outerFold Array.empty game
+            -- "flatten" rows to single array
+            Array.foldl Array.append Array.empty game
+                |> Array.toList
+                |> List.foldl outerFold []
 
-        outerFold row uniqueList =
-            Array.filter isCellValid row
-                |> Array.map (\cell -> cell.value)
-                |> Array.append uniqueList
+        outerFold cell uniqueList =
+            if isCellValid cell then
+                cell.value :: uniqueList
 
-        regionCoords =
-            getRegionBounds ( y, x )
+            else
+                uniqueList
 
-        ( ( lowerY, lowerX ), ( upperX, upperY ) ) =
-            regionCoords
+        ( ( lowerY, lowerX ), ( upperY, upperX ) ) =
+            getRegionBounds region
 
         isXRow cell =
-            cell.x == x
+            cell.x == x && cell.y /= y
 
         isYRow cell =
-            cell.y == y
+            cell.y == y && cell.x /= x
 
         isInsideRegion cell =
-            cell.x >= lowerX && cell.x <= upperX && cell.y >= lowerY && cell.y <= upperY
+            (lowerX <= cell.x)
+                && (lowerY <= cell.y)
+                && (cell.x <= upperX)
+                && (cell.y <= upperY)
 
         isCellValid cell =
-            (cell.x /= x && cell.y /= y)
-                && (isXRow cell || isYRow cell || isInsideRegion cell)
+            (isXRow cell || isYRow cell || isInsideRegion cell)
                 && (cell.value /= "")
+                && (cell.value /= "0")
 
         alreadyContainsValue =
-            Array.toList validValues
-                |> Set.fromList
+            Set.fromList validValues
                 |> Set.member value
     in
     if alreadyContainsValue then
@@ -284,54 +288,7 @@ getRegionBounds bounds =
             )
 
         _ ->
-            Debug.log "INVALID REGION SUPPLIED!" ( ( 999, 999 ), ( 999, 999 ) )
-
-
-getFromCoordinates : Int -> Int -> Array (Array SudokuCell) -> SudokuCell
-getFromCoordinates y x game =
-    let
-        defaultCellValue =
-            { y = y
-            , x = x
-            , value = ""
-            , cellType = RegularCell
-            }
-
-        outerVal =
-            case Array.get y game of
-                Nothing ->
-                    Array.fromList [ defaultCellValue ]
-
-                Just row ->
-                    row
-
-        innerVal =
-            case Array.get x outerVal of
-                Nothing ->
-                    defaultCellValue
-
-                Just cell ->
-                    cell
-    in
-    innerVal
-
-
-createSetFromCells : List String -> List String -> List String -> Set String
-createSetFromCells list1 list2 list3 =
-    let
-        set1 =
-            Set.fromList list1
-
-        set2 =
-            Set.fromList list2
-
-        set3 =
-            Set.fromList list3
-
-        allValues =
-            Set.union (Set.union set1 set2) set3
-    in
-    Set.filter (\x -> x /= "0") allValues
+            ( ( 999, 999 ), ( 999, 999 ) )
 
 
 convertGameToList : Array (Array t) -> List (List t)
@@ -532,4 +489,4 @@ loadingMessage =
             List.range 0 8
                 |> List.map (\i -> rowsCreator i)
     in
-    div [ class "board" ] rows
+    div [ class "loading-board" ] rows

@@ -5,6 +5,7 @@
   "devDependencies": {
     "elm-hot": "^1.1.4",
     "node-elm-compiler": "^5.0.4",
-    "parcel": "^1.12.4"
+    "parcel": "^1.12.4",
+    "sass": "^1.24.0"
   }
 }
