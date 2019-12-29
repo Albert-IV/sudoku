@@ -110,15 +110,12 @@ update msg model =
         LoadGame ->
             ( { model | gameStatus = Loading }, loadGame model.difficulty )
 
-        SetCellValue changeEvent ->
+        SetCellValue newCell ->
             let
                 updatedGame =
-                    setFromCoordinates changeEvent model.game
-
-                updatedAndValidatedGame =
-                    validateSudokuCell changeEvent updatedGame
+                    setFromCoordinates newCell model.game
             in
-            ( { model | game = updatedAndValidatedGame }, Cmd.none )
+            ( { model | game = updatedGame }, Cmd.none )
 
         LoadedBoard result ->
             case result of
@@ -172,23 +169,122 @@ boardDecoder =
 
 
 setFromCoordinates : SudokuCell -> Array (Array SudokuCell) -> Array (Array SudokuCell)
-setFromCoordinates ({ y, x, value, cellType } as change) listOfLists =
+setFromCoordinates ({ y, x, value } as change) game =
     let
         cellValue =
-            { y = y, x = x, value = value, cellType = RegularCell }
+            { y = y, x = x, value = value, cellType = getCellType y x value game }
 
         setInnerVal arr =
             Array.set x cellValue arr
 
         innerArr =
-            case Array.get y listOfLists of
+            case Array.get y game of
                 Nothing ->
                     Array.empty
 
                 Just val ->
                     val
     in
-    validateSudokuCell change (Array.set y (setInnerVal innerArr) listOfLists)
+    Array.set y (setInnerVal innerArr) game
+
+
+getCellType : Int -> Int -> String -> Array (Array SudokuCell) -> CellType
+getCellType y x value game =
+    let
+        region =
+            ( y // 3, x // 3 )
+
+        validValues =
+            Array.foldl outerFold Array.empty game
+
+        outerFold row uniqueList =
+            Array.filter isCellValid row
+                |> Array.map (\cell -> cell.value)
+                |> Array.append uniqueList
+
+        regionCoords =
+            getRegionBounds ( y, x )
+
+        ( ( lowerY, lowerX ), ( upperX, upperY ) ) =
+            regionCoords
+
+        isXRow cell =
+            cell.x == x
+
+        isYRow cell =
+            cell.y == y
+
+        isInsideRegion cell =
+            cell.x >= lowerX && cell.x <= upperX && cell.y >= lowerY && cell.y <= upperY
+
+        isCellValid cell =
+            (cell.x /= x && cell.y /= y)
+                && (isXRow cell || isYRow cell || isInsideRegion cell)
+                && (cell.value /= "")
+
+        alreadyContainsValue =
+            Array.toList validValues
+                |> Set.fromList
+                |> Set.member value
+    in
+    if alreadyContainsValue then
+        InvalidCell
+
+    else
+        RegularCell
+
+
+getRegionBounds : ( Int, Int ) -> ( ( Int, Int ), ( Int, Int ) )
+getRegionBounds bounds =
+    -- Convert (y, x) coordinates to the upper / lower bounds in a 9x9 grid
+    case bounds of
+        ( 0, 0 ) ->
+            ( ( 0, 0 )
+            , ( 2, 2 )
+            )
+
+        ( 1, 0 ) ->
+            ( ( 3, 0 )
+            , ( 5, 2 )
+            )
+
+        ( 2, 0 ) ->
+            ( ( 6, 0 )
+            , ( 8, 2 )
+            )
+
+        ( 0, 1 ) ->
+            ( ( 0, 3 )
+            , ( 2, 5 )
+            )
+
+        ( 1, 1 ) ->
+            ( ( 3, 3 )
+            , ( 5, 5 )
+            )
+
+        ( 2, 1 ) ->
+            ( ( 6, 3 )
+            , ( 8, 5 )
+            )
+
+        ( 0, 2 ) ->
+            ( ( 0, 6 )
+            , ( 2, 8 )
+            )
+
+        ( 1, 2 ) ->
+            ( ( 3, 6 )
+            , ( 5, 8 )
+            )
+
+        ( 2, 2 ) ->
+            ( ( 6, 6 )
+            , ( 8, 8 )
+            )
+
+        _ ->
+            Debug.log "INVALID REGION SUPPLIED!" ( ( 999, 999 ), ( 999, 999 ) )
 
 
 getFromCoordinates : Int -> Int -> Array (Array SudokuCell) -> SudokuCell
@@ -218,99 +314,6 @@ getFromCoordinates y x game =
                     cell
     in
     innerVal
-
-
-validateSudokuCell : SudokuCell -> Array (Array SudokuCell) -> Array (Array SudokuCell)
-validateSudokuCell ({ y, x, value } as cell) game =
-    let
-        xList =
-            getXList x game
-
-        yList =
-            getYList y game
-
-        regionList =
-            getRegionList y x game
-
-        uniqueValues =
-            createSetFromCells xList yList regionList
-    in
-    if not (Set.member value uniqueValues) then
-        game
-
-    else
-        setFromCoordinates { cell | cellType = InvalidCell } game
-
-
-getXList : Int -> Array (Array SudokuCell) -> List String
-getXList x game =
-    let
-        getValue rows =
-            case Array.get x rows of
-                Nothing ->
-                    "0"
-
-                Just cell ->
-                    cell.value
-
-        getRowsWithDefault y =
-            case Array.get y game of
-                Nothing ->
-                    Array.empty
-
-                Just row ->
-                    row
-    in
-    Array.initialize 9 identity
-        |> Array.map getRowsWithDefault
-        |> Array.map getValue
-        |> Array.toList
-
-
-getYList : Int -> Array (Array SudokuCell) -> List String
-getYList y game =
-    let
-        getValue cell =
-            cell.value
-    in
-    Array.get y game
-        |> Maybe.withDefault Array.empty
-        |> Array.map getValue
-        |> Array.toList
-
-
-getRegionList : Int -> Int -> Array (Array SudokuCell) -> List String
-getRegionList y x game =
-    let
-        xRegion =
-            x // 3
-
-        yRegion =
-            y // 3
-    in
-    getRegionCells yRegion xRegion game
-
-
-getRegionCells : Int -> Int -> Array (Array SudokuCell) -> List String
-getRegionCells y x game =
-    let
-        filterCell : SudokuCell -> Bool
-        filterCell cell =
-            cell.y // 3 == y && cell.x // 3 == x
-
-        filterColumn : Array SudokuCell -> Bool
-        filterColumn column =
-            Array.length (Array.filter filterCell column) /= 0
-
-        filteredGame : Array (Array SudokuCell)
-        filteredGame =
-            Array.filter filterColumn game
-
-        extractCells : Array SudokuCell -> Array String -> Array String
-        extractCells row arr =
-            Array.append arr (Array.map (\cell -> cell.value) row)
-    in
-    Array.toList (Array.foldl extractCells Array.empty filteredGame)
 
 
 createSetFromCells : List String -> List String -> List String -> Set String
