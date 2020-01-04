@@ -1,4 +1,4 @@
-name: CI
+name: Build
 
 on: [push]
 
@@ -20,4 +20,4 @@ jobs:
     - name: Install Dependencies and Builds Projects
       run: |
         npm install
-        npm build
+        npm run build
