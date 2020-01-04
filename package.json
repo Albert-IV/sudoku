@@ -1,7 +1,7 @@
 {
   "scripts": {
     "start": "parcel src/index.html",
-    "build": "parcel build src/index.html --out-dir docs --public-url ./"
+    "build": "parcel build src/index.html --out-dir docs --public-url /sudoku/"
   },
   "devDependencies": {
     "elm-hot": "^1.1.4",

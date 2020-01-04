@@ -1,2 +1,2 @@
 *{box-sizing:border-box}.cell{width:40px;height:40px;border:1px solid #d3d3d3}.cell.cell-top{border-top:1px solid #000}.cell.cell-bottom{border-bottom:1px solid #000}.cell.cell-left{border-left:1px solid #000}.cell.cell-right{border-right:1px solid #000}.board .cell:hover:not(.static):not(.invalid){background-color:#add8e6}.cell-input{outline:none;-webkit-appearance:none;text-align:center;width:40px;background-color:transparent;margin:0;padding:0;border:0}.invalid{background-color:rgba(255,0,0,.18)}.board,.loading-board{border:2px solid #000;display:inline-block}.flex{align-content:center}.container,.flex{display:flex;justify-content:center}
-/*# sourceMappingURL=style.ce8b7b19.css.map */
+/*# sourceMappingURL=/sudoku/style.ce8b7b19.css.map */
